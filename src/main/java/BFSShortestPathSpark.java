@@ -51,24 +51,9 @@ public class BFSShortestPathSpark {
             return new Tuple2<>(vertex, data);
         });
 
-        System.out.println("....... Size ......... " + network.count());
-
         JavaPairRDD<String, Data> activeVertices = network.filter(vertex -> vertex._2.status == "ACTIVE");
 
-        Map<String, Data> originalNetwork = network.collectAsMap();
-
-//        originalNetwork.forEach((key, value) -> {
-//            for(Tuple2<String, Integer> neighbor : value.neighbors) {
-//                System.out.println("Vertex " + key + " Neighbor " + neighbor._1 + " distance " + neighbor._2);
-//            }
-//        });
-
-        System.out.println("....... Size ......... " + activeVertices.count());
-
-
         while(activeVertices.count() > 0) {
-
-            System.out.println("Entered the loop ....");
 
             JavaPairRDD<String, Data> propagatedNetwork = network.flatMapToPair(vertex -> {
                 // If a vertex is “ACTIVE”, create Tuple2( neighbor, new Data( … ) ) for
@@ -77,30 +62,12 @@ public class BFSShortestPathSpark {
                 // list. Return all the list items.
 
                 List<Tuple2<String, Data>> propagatedVertices = new ArrayList<>();
-                System.out.println(" ...Active vertex outside " + vertex._1);
-
-//                propagatedVertices.add(vertex);
-//                return propagatedVertices.iterator();
 //
                 if(vertex._2.status.equals("ACTIVE")) {
 
-                   // System.out.println(" ...Active vertex  " + vertex._1);
-
                     for(Tuple2<String, Integer> neighbor : vertex._2.neighbors) {
-
-//                        if(neighbor._1.equals(srcVertex)) {
-//                            continue;
-//                        }
-
-                       Data data = originalNetwork.get(neighbor._1);
-
-                       if(data != null) {
-                           Data newData = new Data(data.neighbors, neighbor._2 + vertex._2.distance, data.prev, data.status);
+                           Data newData = new Data(null, neighbor._2 + vertex._2.distance, Integer.MAX_VALUE, "INACTIVE");
                            propagatedVertices.add(new Tuple2<>(neighbor._1, newData));
-                       }
-
-                        //Data newData = new Data(null, neighbor._2 + vertex._2.distance, Integer.MAX_VALUE, "INACTIVE");
-                        //propagatedVertices.add(new Tuple2<>(neighbor._1, newData));
                     }
 
                 }
@@ -109,27 +76,23 @@ public class BFSShortestPathSpark {
                 return propagatedVertices.iterator();
             });
 
-
-            //System.out.println("size...&&&& " + propagatedNetwork.count());
-
-           // propagatedNetwork.collect().forEach(vertex -> System.out.println("key  *** " + vertex._1 + " " + vertex._2.distance));
-
-
             network = propagatedNetwork.reduceByKey((k1, k2) -> {
                 // For each key, (i.e., each vertex), find the shortest distance and
                 // update this vertex’ Data attribute.
-                Data data = new Data();
-
-//                if(k1.neighbors != null && k1.neighbors.size() > 0) {
-//                    data.neighbors = k1.neighbors;
-//                } else {
-//                    data.neighbors = k2.neighbors;
-//                }
 
                 if(k1.distance > k2.distance) {
-                   return k2;
+
+                    if(!k1.neighbors.isEmpty()) {
+                        k2.neighbors = k1.neighbors;
+                    }
+
+                    return k2;
                 } else {
-                   return k1;
+                    if(!k2.neighbors.isEmpty()) {
+                        k1.neighbors = k2.neighbors;
+                    }
+
+                    return k1;
                 }
             });
 
@@ -147,27 +110,19 @@ public class BFSShortestPathSpark {
 
                 return value;
             });
-
-            //System.out.println(" Size ... *****  " + network.count());
-
             activeVertices = network.filter(vertex -> vertex._2.status == "ACTIVE");
-            //break;
-
         }
-//
-//        System.out.println(" Size ... propogated " + propagatedNetwork.count());
-
-        //propagatedNetwork.collect().forEach(System.out::println);
 
 
+        long stopTime = System.currentTimeMillis();
+        System.err.println("Execution time in milli secs " + (stopTime - startTime));
 
-      //  jsc.stop();
-
-       network.collect().forEach(vertex -> System.out.println(vertex._1 + " " + vertex._2.distance));
+        network.collect().forEach(vertex -> {
+            if(vertex._1.equals(destVertex)) {
+                System.err.println("From " + srcVertex + " to " + destVertex + " takes distance = " + vertex._2.distance);
+            }
+        });
     }
-
-
-
 }
 
 class Data implements Serializable {
