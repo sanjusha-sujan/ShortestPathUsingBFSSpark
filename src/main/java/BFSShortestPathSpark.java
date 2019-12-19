@@ -1,3 +1,4 @@
+import org.apache.spark.Accumulator;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
@@ -20,7 +21,7 @@ public class BFSShortestPathSpark {
         String inputFile = args[0];
         SparkConf conf = new SparkConf().setAppName("BFS-based Shortest Path Search");
         JavaSparkContext jsc = new JavaSparkContext(conf);
-        JavaRDD<String> lines = jsc.textFile(inputFile);
+            JavaRDD<String> lines = jsc.textFile(inputFile);
 
         final String srcVertex = args[1];
         String destVertex = args[2];
@@ -28,6 +29,7 @@ public class BFSShortestPathSpark {
         // now start a timer
         long startTime = System.currentTimeMillis();
 
+        // Constructing Vertex and DataObject pairs.
         JavaPairRDD<String, Data> network = lines.mapToPair(line -> {
             String[] info = line.split("=");
             String[] neighborInfo = info[1].split(";");
@@ -43,6 +45,7 @@ public class BFSShortestPathSpark {
             Data data = new Data();
             data.neighbors = neighbors;
 
+            // Only activating the source vertex and marking the distance as zero.
             if(vertex.equals(srcVertex)) {
                 data.status = "ACTIVE";
                 data.distance = 0;
@@ -51,7 +54,8 @@ public class BFSShortestPathSpark {
             return new Tuple2<>(vertex, data);
         });
 
-        JavaPairRDD<String, Data> activeVertices = network.filter(vertex -> vertex._2.status == "ACTIVE");
+        // Using filter transformation to get active vertices in the network.
+        JavaPairRDD<String, Data> activeVertices = network.filter(vertex -> vertex._2.status.equals("ACTIVE"));
 
         while(activeVertices.count() > 0) {
 
@@ -62,7 +66,7 @@ public class BFSShortestPathSpark {
                 // list. Return all the list items.
 
                 List<Tuple2<String, Data>> propagatedVertices = new ArrayList<>();
-//
+
                 if(vertex._2.status.equals("ACTIVE")) {
 
                     for(Tuple2<String, Integer> neighbor : vertex._2.neighbors) {
@@ -72,7 +76,7 @@ public class BFSShortestPathSpark {
 
                 }
 
-                propagatedVertices.add(new Tuple2<>(vertex._1, vertex._2));
+                propagatedVertices.add(vertex);
                 return propagatedVertices.iterator();
             });
 
@@ -82,12 +86,17 @@ public class BFSShortestPathSpark {
 
                 if(k1.distance > k2.distance) {
 
+                    // In case the neighbors are empty for the shorter distance DataNode, we are
+                    // replacing with original DataNode neighbors.
                     if(!k1.neighbors.isEmpty()) {
                         k2.neighbors = k1.neighbors;
                     }
 
                     return k2;
                 } else {
+
+                    // In case the neighbors are empty for the shorter distance DataNode, we are
+                    // replacing with original DataNode neighbors.
                     if(!k2.neighbors.isEmpty()) {
                         k1.neighbors = k2.neighbors;
                     }
@@ -101,6 +110,8 @@ public class BFSShortestPathSpark {
                 // If a vertex’ new distance is shorter than prev, activate this vertex
                 // status and replace prev with the new distance.
 
+                // For all other vertices we will mark vertex as Inactive.
+
                 if(value.distance < value.prev) {
                     value.prev = value.distance;
                     value.status = "ACTIVE";
@@ -110,18 +121,24 @@ public class BFSShortestPathSpark {
 
                 return value;
             });
-            activeVertices = network.filter(vertex -> vertex._2.status == "ACTIVE");
+
+            // Using filter transformation to get active vertices in the network.
+           activeVertices = network.filter(vertex -> vertex._2.status.equals("ACTIVE"));
         }
 
-
+        // stopping the timer.
         long stopTime = System.currentTimeMillis();
         System.err.println("Execution time in milli secs " + (stopTime - startTime));
 
+        // Filtering the destination vertex and printing the result.
         network.collect().forEach(vertex -> {
             if(vertex._1.equals(destVertex)) {
                 System.err.println("From " + srcVertex + " to " + destVertex + " takes distance = " + vertex._2.distance);
             }
         });
+
+        // Stopping the spark context.
+        jsc.stop();
     }
 }
 
